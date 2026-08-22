@@ -12,6 +12,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/util"
 	sdkconfig "github.com/router-for-me/CLIProxyAPI/v7/sdk/config"
 	log "github.com/sirupsen/logrus"
@@ -327,4 +328,18 @@ func (h *Handler) PutProxyURL(c *gin.Context) {
 func (h *Handler) DeleteProxyURL(c *gin.Context) {
 	h.cfg.ProxyURL = ""
 	h.persist(c)
+}
+
+// FakeRateLimit
+func (h *Handler) GetFakeRateLimit(c *gin.Context) {
+	c.JSON(200, executor.GetFakeRateLimitParams())
+}
+func (h *Handler) PutFakeRateLimit(c *gin.Context) {
+	var body executor.FakeRateLimitParams
+	if err := c.ShouldBindJSON(&body); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
+		return
+	}
+	executor.SetFakeRateLimitParams(body)
+	c.JSON(200, executor.GetFakeRateLimitParams())
 }

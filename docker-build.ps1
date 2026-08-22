@@ -40,11 +40,14 @@ switch ($choice) {
         Write-Host "Building the Docker image..."
         docker compose build --build-arg VERSION=$VERSION --build-arg COMMIT=$COMMIT --build-arg BUILD_DATE=$BUILD_DATE
 
-        Write-Host "Starting the services..."
-        docker compose up -d --remove-orphans --pull never
+        Write-Host "Build complete. Image tagged as: $env:CLI_PROXY_IMAGE"
+        Write-Host "Run 'docker compose up -d' to start the services."
 
-        Write-Host "Build complete. Services are starting."
-        Write-Host "Run 'docker compose logs -f' to see the logs."
+#         Write-Host "Starting the services..."
+#         docker compose up -d --remove-orphans --pull never
+#
+#         Write-Host "Build complete. Services are starting."
+#         Write-Host "Run 'docker compose logs -f' to see the logs."
     }
     default {
         Write-Host "Invalid choice. Please enter 1 or 2."
