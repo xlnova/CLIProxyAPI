@@ -33,7 +33,7 @@ var (
 func init() {
 	fakeRateLimitRefreshMin.Store(10)
 	fakeRateLimitRefreshMax.Store(20)
-	fakeRateLimitMaxPct.Store(40)
+	fakeRateLimitMaxPct.Store(10)
 	fakeRateLimitSafeThresh.Store(10)
 }
 
