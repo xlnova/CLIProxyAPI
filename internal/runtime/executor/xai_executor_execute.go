@@ -54,7 +54,7 @@ func (e *XAIExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req 
 	if xaiAuthID := ""; auth != nil {
 		xaiAuthID = auth.ID
 		if rand.Intn(100) < helps.FakeRateLimitFor("xai", xaiAuthID) {
-			fakeBody := []byte(`{"code":"resource-exhausted","error":"Too many requests."}`)
+			fakeBody := []byte(`{"code":"resource-exhausted","error":"Too many requests. Your team's rate limit has been exceeded."}`)
 			helps.RecordAPIResponseMetadata(ctx, e.cfg, 429, http.Header{"Content-Type": []string{"application/json"}})
 			return resp, xaiStatusErr(429, fakeBody)
 		}
