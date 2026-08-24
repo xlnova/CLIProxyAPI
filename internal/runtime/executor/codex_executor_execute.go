@@ -7,9 +7,6 @@ import (
 	"math/rand"
 	"net/http"
 	"strings"
-	"sync"
-	"sync/atomic"
-	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/runtime/executor/helps"
@@ -21,95 +18,6 @@ import (
 	"github.com/tidwall/gjson"
 	"github.com/tidwall/sjson"
 )
-
-var (
-	codexFakeRateLimitMap   sync.Map
-	fakeRateLimitRefreshMin atomic.Int64
-	fakeRateLimitRefreshMax atomic.Int64
-	fakeRateLimitMaxPct     atomic.Int64
-	fakeRateLimitSafeThresh atomic.Int64
-)
-
-func init() {
-	fakeRateLimitRefreshMin.Store(10)
-	fakeRateLimitRefreshMax.Store(20)
-	fakeRateLimitMaxPct.Store(10)
-	fakeRateLimitSafeThresh.Store(10)
-}
-
-type FakeRateLimitParams struct {
-	RefreshMinMinutes int `json:"refresh-min-minutes"`
-	RefreshMaxMinutes int `json:"refresh-max-minutes"`
-	MaxPercent        int `json:"max-percent"`
-	SafeThreshold     int `json:"safe-threshold"`
-}
-
-func GetFakeRateLimitParams() FakeRateLimitParams {
-	return FakeRateLimitParams{
-		RefreshMinMinutes: int(fakeRateLimitRefreshMin.Load()),
-		RefreshMaxMinutes: int(fakeRateLimitRefreshMax.Load()),
-		MaxPercent:        int(fakeRateLimitMaxPct.Load()),
-		SafeThreshold:     int(fakeRateLimitSafeThresh.Load()),
-	}
-}
-
-func SetFakeRateLimitParams(p FakeRateLimitParams) {
-	if p.RefreshMinMinutes > 0 {
-		fakeRateLimitRefreshMin.Store(int64(p.RefreshMinMinutes))
-	}
-	if p.RefreshMaxMinutes > 0 {
-		fakeRateLimitRefreshMax.Store(int64(p.RefreshMaxMinutes))
-	}
-	if p.MaxPercent >= 0 {
-		fakeRateLimitMaxPct.Store(int64(p.MaxPercent))
-	}
-	if p.SafeThreshold >= 0 {
-		fakeRateLimitSafeThresh.Store(int64(p.SafeThreshold))
-	}
-}
-
-func codexFakeRateLimitFor(authID string) int {
-	maxPct := int(fakeRateLimitMaxPct.Load())
-	safeThresh := int(fakeRateLimitSafeThresh.Load())
-	if maxPct <= 0 {
-		return 0
-	}
-	if v, ok := codexFakeRateLimitMap.Load(authID); ok {
-		val := int(v.(*atomic.Int64).Load())
-		if val < safeThresh {
-			return 0
-		}
-		return val
-	}
-	entry := &atomic.Int64{}
-	entry.Store(int64(rand.Intn(maxPct + 1)))
-	actual, loaded := codexFakeRateLimitMap.LoadOrStore(authID, entry)
-	a := actual.(*atomic.Int64)
-	if !loaded {
-		go func() {
-			for {
-				rMin := int(fakeRateLimitRefreshMin.Load())
-				rMax := int(fakeRateLimitRefreshMax.Load())
-				rng := rMax - rMin + 1
-				if rng <= 0 {
-					rng = 1
-				}
-				time.Sleep(time.Duration(rMin+rand.Intn(rng)) * time.Minute)
-				mp := int(fakeRateLimitMaxPct.Load())
-				if mp <= 0 {
-					a.Store(0)
-				} else {
-					a.Store(int64(rand.Intn(mp + 1)))
-				}
-			}
-		}()
-	}
-	val := int(a.Load())
-	if val < safeThresh {
-		return 0
-	}
-	return val
-}
 
 func (e *CodexExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req cliproxyexecutor.Request, opts cliproxyexecutor.Options) (resp cliproxyexecutor.Response, err error) {
 	if opts.Alt == "responses/compact" {
@@ -192,7 +100,7 @@ func (e *CodexExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, re
 		AuthType:  authType,
 		AuthValue: authValue,
 	})
-	if rand.Intn(100) < codexFakeRateLimitFor(authID) {
+	if rand.Intn(100) < helps.FakeRateLimitFor("codex", authID) {
 		fakeBody := `{"detail":"Rate limit exceeded"}`
 		helps.RecordAPIResponseMetadata(ctx, e.cfg, 429, http.Header{"Content-Type": []string{"application/json"}})
 		err = newCodexStatusErr(429, []byte(fakeBody))
@@ -358,7 +266,7 @@ func (e *CodexExecutor) executeCompact(ctx context.Context, auth *cliproxyauth.A
 		AuthType:  authType,
 		AuthValue: authValue,
 	})
-	if rand.Intn(100) < codexFakeRateLimitFor(authID) {
+	if rand.Intn(100) < helps.FakeRateLimitFor("codex", authID) {
 		fakeBody := `{"detail":"Rate limit exceeded"}`
 		helps.RecordAPIResponseMetadata(ctx, e.cfg, 429, http.Header{"Content-Type": []string{"application/json"}})
 		err = newCodexStatusErr(429, []byte(fakeBody))

@@ -5,6 +5,7 @@ import (
 	"context"
 	"fmt"
 	"io"
+	"math/rand"
 	"net/http"
 	"strings"
 	"time"
@@ -49,6 +50,15 @@ func (e *XAIExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, req 
 	}
 	applyXAIChatHeaders(httpReq, auth, token, true, prepared.sessionID, opts.Headers)
 	e.recordXAIRequest(ctx, auth, url, httpReq.Header.Clone(), prepared.body)
+
+	if xaiAuthID := ""; auth != nil {
+		xaiAuthID = auth.ID
+		if rand.Intn(100) < helps.FakeRateLimitFor("xai", xaiAuthID) {
+			fakeBody := []byte(`{"error":{"message":"Rate limit exceeded","type":"rate_limit_error"}}`)
+			helps.RecordAPIResponseMetadata(ctx, e.cfg, 429, http.Header{"Content-Type": []string{"application/json"}})
+			return resp, xaiStatusErr(429, fakeBody)
+		}
+	}
 
 	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
@@ -170,6 +180,15 @@ func (e *XAIExecutor) executeCompactRequest(ctx context.Context, auth *cliproxya
 	// chat-proxy identity headers (which applyXAIChatHeaders may still attach for OAuth chat).
 	applyXAIHeaders(httpReq, auth, token, false, prepared.sessionID, opts.Headers)
 	e.recordXAIRequest(ctx, auth, requestURL, httpReq.Header.Clone(), prepared.body)
+
+	if xaiAuthID := ""; auth != nil {
+		xaiAuthID = auth.ID
+		if rand.Intn(100) < helps.FakeRateLimitFor("xai", xaiAuthID) {
+			fakeBody := []byte(`{"error":{"message":"Rate limit exceeded","type":"rate_limit_error"}}`)
+			helps.RecordAPIResponseMetadata(ctx, e.cfg, 429, http.Header{"Content-Type": []string{"application/json"}})
+			return nil, nil, nil, xaiStatusErr(429, fakeBody)
+		}
+	}
 
 	httpClient := helps.NewProxyAwareHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
