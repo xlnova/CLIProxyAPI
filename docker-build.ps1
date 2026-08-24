@@ -24,9 +24,19 @@ switch ($choice) {
         Write-Host "--- Building from Source and Running ---"
 
         # Get Version Information
-        $VERSION = (git describe --tags --always --dirty)
         $COMMIT  = (git rev-parse --short HEAD)
-        $BUILD_DATE = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+
+        $VERSION = Read-Host -Prompt "Enter version (e.g. v1.0.0)"
+        if ([string]::IsNullOrWhiteSpace($VERSION)) {
+            Write-Host "Version cannot be empty."
+            exit 1
+        }
+
+        $defaultDate = (Get-Date).ToUniversalTime().ToString("yyyy-MM-ddTHH:mm:ssZ")
+        $BUILD_DATE = Read-Host -Prompt "Enter build date [$defaultDate]"
+        if ([string]::IsNullOrWhiteSpace($BUILD_DATE)) {
+            $BUILD_DATE = $defaultDate
+        }
 
         Write-Host "Building with the following info:"
         Write-Host "  Version: $VERSION"
