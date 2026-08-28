@@ -1,10 +1,14 @@
 package helps
 
 import (
+	"context"
 	"math/rand"
+	"net/http"
 	"sync"
 	"sync/atomic"
 	"time"
+
+	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 )
 
 type FakeRateLimitParams struct {
@@ -140,4 +144,29 @@ func FakeRateLimitFor(provider, authID string) int {
 		return 0
 	}
 	return p.forAuth(authID)
+}
+
+type fakeRateLimitResponse struct {
+	StatusCode int
+	Body       []byte
+}
+
+var fakeRateLimitResponses = map[string][]fakeRateLimitResponse{
+	"codex": {
+		{429, []byte(`{"detail":"Rate limit exceeded"}`)},
+		{503, []byte(`{"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later.","param":null}}`)},
+	},
+	"xai": {
+		{429, []byte(`{"code":"resource-exhausted","error":"Too many requests. Your team's rate limit has been exceeded."}`)},
+	},
+}
+
+func CheckFakeRateLimit(ctx context.Context, cfg *config.Config, provider, authID string) (int, []byte, bool) {
+	if rand.Intn(100) >= FakeRateLimitFor(provider, authID) {
+		return 0, nil, false
+	}
+	responses := fakeRateLimitResponses[provider]
+	r := responses[rand.Intn(len(responses))]
+	RecordAPIResponseMetadata(ctx, cfg, r.StatusCode, http.Header{"Content-Type": []string{"application/json"}})
+	return r.StatusCode, r.Body, true
 }

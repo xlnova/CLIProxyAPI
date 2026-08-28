@@ -4,7 +4,6 @@ import (
 	"bytes"
 	"context"
 	"io"
-	"math/rand"
 	"net/http"
 	"strings"
 
@@ -100,11 +99,8 @@ func (e *CodexExecutor) Execute(ctx context.Context, auth *cliproxyauth.Auth, re
 		AuthType:  authType,
 		AuthValue: authValue,
 	})
-	if rand.Intn(100) < helps.FakeRateLimitFor("codex", authID) {
-		fakeBody := `{"detail":"Rate limit exceeded"}`
-		helps.RecordAPIResponseMetadata(ctx, e.cfg, 429, http.Header{"Content-Type": []string{"application/json"}})
-		err = newCodexStatusErr(429, []byte(fakeBody))
-		return resp, err
+	if code, fakeBody, ok := helps.CheckFakeRateLimit(ctx, e.cfg, "codex", authID); ok {
+		return resp, newCodexStatusErr(code, fakeBody)
 	}
 	httpClient := helps.NewUtlsHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
@@ -266,11 +262,8 @@ func (e *CodexExecutor) executeCompact(ctx context.Context, auth *cliproxyauth.A
 		AuthType:  authType,
 		AuthValue: authValue,
 	})
-	if rand.Intn(100) < helps.FakeRateLimitFor("codex", authID) {
-		fakeBody := `{"detail":"Rate limit exceeded"}`
-		helps.RecordAPIResponseMetadata(ctx, e.cfg, 429, http.Header{"Content-Type": []string{"application/json"}})
-		err = newCodexStatusErr(429, []byte(fakeBody))
-		return resp, err
+	if code, fakeBody, ok := helps.CheckFakeRateLimit(ctx, e.cfg, "codex", authID); ok {
+		return resp, newCodexStatusErr(code, fakeBody)
 	}
 	httpClient := helps.NewUtlsHTTPClient(ctx, e.cfg, auth, 0)
 	httpClient = reporter.TrackHTTPClient(httpClient)
