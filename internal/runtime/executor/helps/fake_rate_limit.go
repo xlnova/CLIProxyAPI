@@ -6,32 +6,25 @@ import (
 	"net/http"
 	"sync"
 	"sync/atomic"
-	"time"
 
 	"github.com/router-for-me/CLIProxyAPI/v7/internal/config"
 )
 
 type FakeRateLimitParams struct {
-	RefreshMinMinutes int `json:"refresh-min-minutes"`
-	RefreshMaxMinutes int `json:"refresh-max-minutes"`
-	MaxPercent        int `json:"max-percent"`
-	SafeThreshold     int `json:"safe-threshold"`
+	MaxPercent    int `json:"max-percent"`
+	SafeThreshold int `json:"safe-threshold"`
 }
 
 type FakeRateLimitAllParams map[string]*FakeRateLimitParams
 
 type fakeRateLimitProvider struct {
 	rateLimitMap sync.Map
-	refreshMin   atomic.Int64
-	refreshMax   atomic.Int64
 	maxPct       atomic.Int64
 	safeThresh   atomic.Int64
 }
 
 func newFakeRateLimitProvider(defaults FakeRateLimitParams) *fakeRateLimitProvider {
 	p := &fakeRateLimitProvider{}
-	p.refreshMin.Store(int64(defaults.RefreshMinMinutes))
-	p.refreshMax.Store(int64(defaults.RefreshMaxMinutes))
 	p.maxPct.Store(int64(defaults.MaxPercent))
 	p.safeThresh.Store(int64(defaults.SafeThreshold))
 	return p
@@ -39,26 +32,19 @@ func newFakeRateLimitProvider(defaults FakeRateLimitParams) *fakeRateLimitProvid
 
 func (p *fakeRateLimitProvider) get() FakeRateLimitParams {
 	return FakeRateLimitParams{
-		RefreshMinMinutes: int(p.refreshMin.Load()),
-		RefreshMaxMinutes: int(p.refreshMax.Load()),
-		MaxPercent:        int(p.maxPct.Load()),
-		SafeThreshold:     int(p.safeThresh.Load()),
+		MaxPercent:    int(p.maxPct.Load()),
+		SafeThreshold: int(p.safeThresh.Load()),
 	}
 }
 
 func (p *fakeRateLimitProvider) set(params FakeRateLimitParams) {
-	if params.RefreshMinMinutes > 0 {
-		p.refreshMin.Store(int64(params.RefreshMinMinutes))
-	}
-	if params.RefreshMaxMinutes > 0 {
-		p.refreshMax.Store(int64(params.RefreshMaxMinutes))
-	}
 	if params.MaxPercent >= 0 {
 		p.maxPct.Store(int64(params.MaxPercent))
 	}
 	if params.SafeThreshold >= 0 {
 		p.safeThresh.Store(int64(params.SafeThreshold))
 	}
+	p.rateLimitMap.Clear()
 }
 
 func (p *fakeRateLimitProvider) forAuth(authID string) int {
@@ -76,28 +62,8 @@ func (p *fakeRateLimitProvider) forAuth(authID string) int {
 	}
 	entry := &atomic.Int64{}
 	entry.Store(int64(rand.Intn(maxPct + 1)))
-	actual, loaded := p.rateLimitMap.LoadOrStore(authID, entry)
-	a := actual.(*atomic.Int64)
-	if !loaded {
-		go func() {
-			for {
-				rMin := int(p.refreshMin.Load())
-				rMax := int(p.refreshMax.Load())
-				rng := rMax - rMin + 1
-				if rng <= 0 {
-					rng = 1
-				}
-				time.Sleep(time.Duration(rMin+rand.Intn(rng)) * time.Minute)
-				mp := int(p.maxPct.Load())
-				if mp <= 0 {
-					a.Store(0)
-				} else {
-					a.Store(int64(rand.Intn(mp + 1)))
-				}
-			}
-		}()
-	}
-	val := int(a.Load())
+	actual, _ := p.rateLimitMap.LoadOrStore(authID, entry)
+	val := int(actual.(*atomic.Int64).Load())
 	if val < safeThresh {
 		return 0
 	}
@@ -105,10 +71,8 @@ func (p *fakeRateLimitProvider) forAuth(authID string) int {
 }
 
 var defaultParams = FakeRateLimitParams{
-	RefreshMinMinutes: 10,
-	RefreshMaxMinutes: 20,
-	MaxPercent:        5,
-	SafeThreshold:     5,
+	MaxPercent:    5,
+	SafeThreshold: 5,
 }
 
 var fakeRateLimitProviders = map[string]*fakeRateLimitProvider{
@@ -119,8 +83,7 @@ var fakeRateLimitProviders = map[string]*fakeRateLimitProvider{
 func GetFakeRateLimitAll() FakeRateLimitAllParams {
 	result := make(FakeRateLimitAllParams, len(fakeRateLimitProviders))
 	for name, p := range fakeRateLimitProviders {
-		params := p.get()
-		result[name] = &params
+		result[name] = new(p.get())
 	}
 	return result
 }
@@ -146,27 +109,56 @@ func FakeRateLimitFor(provider, authID string) int {
 	return p.forAuth(authID)
 }
 
-type fakeRateLimitResponse struct {
-	StatusCode int
-	Body       []byte
+type FakeRateLimitResponse struct {
+	StatusCode int    `json:"status-code"`
+	Body       string `json:"body"`
 }
 
-var fakeRateLimitResponses = map[string][]fakeRateLimitResponse{
+type FakeRateLimitResponsesAll map[string][]FakeRateLimitResponse
+
+var fakeRateLimitResponsesMu sync.RWMutex
+
+var fakeRateLimitResponses = FakeRateLimitResponsesAll{
 	"codex": {
-		{429, []byte(`{"detail":"Rate limit exceeded"}`)},
-		{503, []byte(`{"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later.","param":null}}`)},
+		{429, `{"detail":"Rate limit exceeded"}`},
+		{503, `{"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later.","param":null}}`},
 	},
 	"xai": {
-		{429, []byte(`{"code":"resource-exhausted","error":"Too many requests. Your team's rate limit has been exceeded."}`)},
+		{429, `{"code":"resource-exhausted","error":"Too many requests. Your team's rate limit has been exceeded."}`},
 	},
+}
+
+func GetFakeRateLimitResponses() FakeRateLimitResponsesAll {
+	fakeRateLimitResponsesMu.RLock()
+	defer fakeRateLimitResponsesMu.RUnlock()
+	result := make(FakeRateLimitResponsesAll, len(fakeRateLimitResponses))
+	for name, responses := range fakeRateLimitResponses {
+		copied := make([]FakeRateLimitResponse, len(responses))
+		copy(copied, responses)
+		result[name] = copied
+	}
+	return result
+}
+
+func SetFakeRateLimitResponses(all FakeRateLimitResponsesAll) {
+	fakeRateLimitResponsesMu.Lock()
+	defer fakeRateLimitResponsesMu.Unlock()
+	for name, responses := range all {
+		if len(responses) == 0 {
+			continue
+		}
+		fakeRateLimitResponses[name] = responses
+	}
 }
 
 func CheckFakeRateLimit(ctx context.Context, cfg *config.Config, provider, authID string) (int, []byte, bool) {
 	if rand.Intn(100) >= FakeRateLimitFor(provider, authID) {
 		return 0, nil, false
 	}
+	fakeRateLimitResponsesMu.RLock()
 	responses := fakeRateLimitResponses[provider]
 	r := responses[rand.Intn(len(responses))]
+	fakeRateLimitResponsesMu.RUnlock()
 	RecordAPIResponseMetadata(ctx, cfg, r.StatusCode, http.Header{"Content-Type": []string{"application/json"}})
-	return r.StatusCode, r.Body, true
+	return r.StatusCode, []byte(r.Body), true
 }

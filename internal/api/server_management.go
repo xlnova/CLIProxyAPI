@@ -123,9 +123,13 @@ func (s *Server) registerManagementRoutes() {
 		mgmt.PUT("/routing/strategy", s.mgmt.PutRoutingStrategy)
 		mgmt.PATCH("/routing/strategy", s.mgmt.PutRoutingStrategy)
 
-		mgmt.GET("/fake-rate-limit", s.mgmt.GetFakeRateLimit)
-		mgmt.PUT("/fake-rate-limit", s.mgmt.PutFakeRateLimit)
-		mgmt.PATCH("/fake-rate-limit", s.mgmt.PutFakeRateLimit)
+		mgmt.GET("/fake-rate/limit", s.mgmt.GetFakeRateLimit)
+		mgmt.PUT("/fake-rate/limit", s.mgmt.PutFakeRateLimit)
+		mgmt.PATCH("/fake-rate/limit", s.mgmt.PutFakeRateLimit)
+
+		mgmt.GET("/fake-rate/responses", s.mgmt.GetFakeRateLimitResponses)
+		mgmt.PUT("/fake-rate/responses", s.mgmt.PutFakeRateLimitResponses)
+		mgmt.PATCH("/fake-rate/responses", s.mgmt.PutFakeRateLimitResponses)
 
 		mgmt.GET("/claude-api-key", s.mgmt.GetClaudeKeys)
 		mgmt.PUT("/claude-api-key", s.mgmt.PutClaudeKeys)
