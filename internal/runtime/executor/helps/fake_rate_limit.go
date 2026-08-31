@@ -55,7 +55,7 @@ func (p *fakeRateLimitProvider) forAuth(authID string) int {
 	}
 	if v, ok := p.rateLimitMap.Load(authID); ok {
 		val := int(v.(*atomic.Int64).Load())
-		if val < safeThresh {
+		if val <= safeThresh {
 			return 0
 		}
 		return val
@@ -64,7 +64,7 @@ func (p *fakeRateLimitProvider) forAuth(authID string) int {
 	entry.Store(int64(rand.Intn(maxPct + 1)))
 	actual, _ := p.rateLimitMap.LoadOrStore(authID, entry)
 	val := int(actual.(*atomic.Int64).Load())
-	if val < safeThresh {
+	if val <= safeThresh {
 		return 0
 	}
 	return val
