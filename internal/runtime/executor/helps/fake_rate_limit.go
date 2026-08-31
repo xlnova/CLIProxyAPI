@@ -2,10 +2,8 @@ package helps
 
 import (
 	"context"
-	"fmt"
 	"math/rand"
 	"net/http"
-	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -111,19 +109,18 @@ func FakeRateLimitFor(provider, authID string) int {
 	return p.forAuth(authID)
 }
 
-type FakeRateLimitResponse struct {
+type FakeRateResponse struct {
 	StatusCode int    `json:"status-code"`
 	Body       string `json:"body"`
 }
 
-type FakeRateLimitResponsesAll map[string][]FakeRateLimitResponse
+type FakeRateResponsesAll map[string][]FakeRateResponse
 
 var fakeRateLimitResponsesMu sync.RWMutex
 
-var fakeRateLimitResponses = FakeRateLimitResponsesAll{
+var fakeRateLimitResponses = FakeRateResponsesAll{
 	"codex": {
-		{429, `{"error":{"type":"invalid_request_error","code":"rate_limit_exceeded","message":"You've exceeded the rate limit, please slow down and try again after 60.{{RAND6}} seconds.","param":null}}`},
-		{429, `{"error":{"type":"rate_limit_error","code": "slow_down","message": "Please slow down and try again later.","param":null}}`},
+		{429, `{"detail":"Rate limit exceeded"}`},
 		{503, `{"error":{"type":"service_unavailable_error","code":"server_is_overloaded","message":"Our servers are currently overloaded. Please try again later.","param":null}}`},
 	},
 	"xai": {
@@ -131,19 +128,19 @@ var fakeRateLimitResponses = FakeRateLimitResponsesAll{
 	},
 }
 
-func GetFakeRateLimitResponses() FakeRateLimitResponsesAll {
+func GetFakeRateResponses() FakeRateResponsesAll {
 	fakeRateLimitResponsesMu.RLock()
 	defer fakeRateLimitResponsesMu.RUnlock()
-	result := make(FakeRateLimitResponsesAll, len(fakeRateLimitResponses))
+	result := make(FakeRateResponsesAll, len(fakeRateLimitResponses))
 	for name, responses := range fakeRateLimitResponses {
-		copied := make([]FakeRateLimitResponse, len(responses))
+		copied := make([]FakeRateResponse, len(responses))
 		copy(copied, responses)
 		result[name] = copied
 	}
 	return result
 }
 
-func SetFakeRateLimitResponses(all FakeRateLimitResponsesAll) {
+func SetFakeRateResponses(all FakeRateResponsesAll) {
 	fakeRateLimitResponsesMu.Lock()
 	defer fakeRateLimitResponsesMu.Unlock()
 	for name, responses := range all {
@@ -160,12 +157,12 @@ func CheckFakeRateLimit(ctx context.Context, cfg *config.Config, provider, authI
 	}
 	fakeRateLimitResponsesMu.RLock()
 	responses := fakeRateLimitResponses[provider]
+	if len(responses) == 0 {
+		fakeRateLimitResponsesMu.RUnlock()
+		return 0, nil, false
+	}
 	r := responses[rand.Intn(len(responses))]
 	fakeRateLimitResponsesMu.RUnlock()
-	body := r.Body
-	if strings.Contains(body, "{{RAND6}}") {
-		body = strings.Replace(body, "{{RAND6}}", fmt.Sprintf("%06d", rand.Intn(1000000)), 1)
-	}
 	RecordAPIResponseMetadata(ctx, cfg, r.StatusCode, http.Header{"Content-Type": []string{"application/json"}})
-	return r.StatusCode, []byte(body), true
+	return r.StatusCode, []byte(r.Body), true
 }

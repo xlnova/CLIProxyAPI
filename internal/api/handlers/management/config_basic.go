@@ -359,15 +359,15 @@ func (h *Handler) PutFakeRateLimit(c *gin.Context) {
 	c.JSON(200, helps.GetFakeRateLimitAll())
 }
 
-func (h *Handler) GetFakeRateLimitResponses(c *gin.Context) {
-	c.JSON(200, helps.GetFakeRateLimitResponses())
+func (h *Handler) GetFakeRateResponses(c *gin.Context) {
+	c.JSON(200, helps.GetFakeRateResponses())
 }
-func (h *Handler) PutFakeRateLimitResponses(c *gin.Context) {
-	var body helps.FakeRateLimitResponsesAll
+func (h *Handler) PutFakeRateResponses(c *gin.Context) {
+	var body helps.FakeRateResponsesAll
 	if err := c.ShouldBindJSON(&body); err != nil {
 		c.JSON(http.StatusBadRequest, gin.H{"error": "invalid body"})
 		return
 	}
-	helps.SetFakeRateLimitResponses(body)
-	c.JSON(200, helps.GetFakeRateLimitResponses())
+	helps.SetFakeRateResponses(body)
+	c.JSON(200, helps.GetFakeRateResponses())
 }
